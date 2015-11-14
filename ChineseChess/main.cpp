@@ -3,6 +3,7 @@
 #include "MainWnd.h"
 #include <QTime>
 
+//因为是QT的图形界面程序，并且还涉及到网络功能，所以要先在.pro文件中加入QT += widgets gui network
 int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
