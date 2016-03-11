@@ -16,7 +16,7 @@ public:
     /* game data */
     Stone _s[32];
     int _r;
-    QPoint _off;   //棋盘原点 和 屏幕原点 的之间的偏离
+    QPoint _off;      //棋盘原点 和 屏幕原点 的之间的偏离
     bool _bSide;
 
     QVector<Step*> _steps;    //以便于悔棋的操作
