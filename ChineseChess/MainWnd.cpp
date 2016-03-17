@@ -1,4 +1,4 @@
-#include "MainWnd.h"
+﻿#include "MainWnd.h"
 #include <QHBoxLayout>
 #include "SingleGame.h"
 #include "MultiGame.h"
@@ -10,6 +10,7 @@ MainWnd::MainWnd(int gameType, QWidget *parent) : QWidget(parent)
 
     if(_gameType == 0)      //人机对战
     {
+        //SingleGame
         SingleGame* game = new SingleGame;  //游戏部分——棋盘
         CtrlPanel* panel = new CtrlPanel;   //控制部分——悔棋
 
@@ -21,6 +22,7 @@ MainWnd::MainWnd(int gameType, QWidget *parent) : QWidget(parent)
     }
     else if(_gameType == 1)  //双人游戏
     {
+        //MultiGame
         MultiGame* game = new MultiGame;
         CtrlPanel* panel = new CtrlPanel;
 
@@ -31,6 +33,7 @@ MainWnd::MainWnd(int gameType, QWidget *parent) : QWidget(parent)
     }
     else if(_gameType == 2)  //网络对战——服务器端
     {
+        //NetGame
         NetGame* game = new NetGame(true);
         CtrlPanel* panel = new CtrlPanel;
 
@@ -41,6 +44,7 @@ MainWnd::MainWnd(int gameType, QWidget *parent) : QWidget(parent)
     }
     else if(_gameType == 3)  //网络对战——客户端
     {
+        //NetGame
         NetGame* game = new NetGame(false);
         CtrlPanel* panel = new CtrlPanel;
 

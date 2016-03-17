@@ -1,0 +1,287 @@
+
+1、QT提供QWidget来抽象窗口（只提供默认行文）。我们的窗口（Board）正是派生自QWidget，重写paintEvent函数（当窗口重绘时调用该函数）；
+
+2、QApplication、QWidget、QPainter、QMouseEvent、QPushButton、
+
+3、代码整体结构：
+   ChooseDlg：选择对战模型对话框
+   
+   Stone：棋子类；——行、列、ID、死亡标记、红黑标记、类型（车马相...）
+   Step：棋子走的某一步；用来“悔棋”操作 和 人工智能里面“选取最优走法”；
+   
+   Board：棋盘、棋子的基本框架、功能实现；
+           （1）绘制棋盘；————方格、九宫格、“炮”“兵”位置标记、楚河汉界
+		   （2）绘制棋子；————圆圈、文字
+		   （3）行列转换为屏幕坐标；
+		   
+		   （4）下棋者 的走棋规则；
+		   （5）棋子移动、以及移动规则；
+		   
+   CtrlPanel：对战过程控制面板————悔棋
+   
+   MultiGame：人人对战；——完全继承自Board；
+   SingleGame：人机对战；——继承自Board；
+   NetGame：网络对战；——继承自Board；
+      
+
+
+4、红棋16颗：编号0-15；
+   黑棋16颗：编号16-31；
+	  
+   
+   
+5、怎么判断是否点中了棋子？
+//将 鼠标点击的pt 与 象棋的行列值（中心点）进行比较，
+//判断鼠标点击位置 在不在 某棋子的范围之内（也就是说是不是点中了棋子）
+//小提示：因为&row, &col都是引用，遍历整个棋盘遇到合适的条件函数返回时，同时返回了此时的row，col
+bool Board::getClickRowCol(QPoint pt, int &row, int &col)
+{
+    for(row=0; row<=9; ++row)
+    {
+        for(col=0; col<=8; ++col)
+        {
+            //棋子所控的范围就是以中心点为圆心，棋子半径为半径的圆圈
+            QPoint distance = center(row, col) - pt;
+            if(distance.x() * distance.x() + distance.y() * distance.y() < _r* _r)
+                return true;
+        }
+    }
+    return false;
+}
+
+//得到该row、col上面的棋子
+int Board::getStoneId(int row, int col)
+{
+    for(int i=0; i<32; ++i)
+    {
+        if(_s[i]._row == row && _s[i]._col == col && !isDead(i))
+            return i;
+    }
+    return -1;
+}
+
+
+
+
+
+
+
+6、棋子移动规则：————移动规则模块是整个中国象棋游戏的核心之一
+//移动规则辅助函数（1）————“车”、“炮”
+//获取这两个鼠标点之间的象棋的个数
+int Board::getStoneCountAtLine(int row1, int col1, int row2, int col2)
+{
+    int ret = 0;
+    if(row1 != row2 && col1 != col2)
+        return -1;
+    if(row1 == row2 && col1 == col2)
+        return -1;
+
+    if(row1 == row2)
+    {
+        int min = col1 < col2 ? col1 : col2;
+        int max = col1 < col2 ? col2 : col1;
+        for(int col = min+1; col<max; ++col)
+        {
+            if(getStoneId(row1, col) != -1) ++ret;
+        }
+    }
+    else
+    {
+        int min = row1 < row2 ? row1 : row2;
+        int max = row1 < row2 ? row2 : row1;
+        for(int row = min+1; row<max; ++row)
+        {
+            if(getStoneId(row, col1) != -1) ++ret;
+        }
+    }
+
+    return ret;
+}
+//移动规则辅助函数（2）————“马”、“兵”、“将”、“士”、“象”
+//获取行列之间的关系(从而去限定棋子走的路线)，在判断给定类型棋子能否走的规则中用到
+int Board::relation(int row1, int col1, int row, int col)
+{
+    // D = qAbs(row1-row)*10+qAbs(col1-col)  ——— D值是棋子移动步长的重要指标，相应的棋子必须满足“一定”的步长
+    return qAbs(row1-row)*10+qAbs(col1-col);
+}
+//移动规则辅助函数（3）————“兵”、“将”、“士”、“象”
+//判断棋子属于哪一边
+bool Board::isBottomSide(int id)
+{
+    return _bSide == _s[id]._red;
+}
+
+
+
+
+
+
+
+7、人机是怎么衔接的？
+在SingleGame中重写Board的click函数（玩家），Board::click(id, row, col)(用户)之后接着computerMove()
+
+void SingleGame::click(int id, int row, int col)   //在此处是一个虚函数
+{
+    if(_bRedTurn)  //只有红方（用户，默认设定）动了以后，电脑才走
+    {
+        Board::click(id, row, col);   //用户还是照常走
+
+        //用户移动完0.1秒以后，电脑再思考
+        if(!_bRedTurn)
+        {            
+            //因为电脑思考还是很慢的（很多步骤！），就会把主进程阻塞！阻塞以后，界面就没法得到响应！
+            //启动定时器，在0.01秒后电脑再思考。就是这0.01秒，就可以完成界面的刷新！
+            //可以try一下直接computerMove()是什么效果。
+            QTimer::singleShot(10, this, SLOT(computerMove()));   //槽函数
+        }
+    }
+}
+
+
+
+
+
+
+
+
+8、电脑怎么走棋？
+     * 1）、看看有哪些步骤可以走；
+     * 2）、试着走一下；————人在走棋时，也会拿起棋试着放到想走的地方看一看，但是并不落子。
+     * 3）、评估走的结果（局面分）；
+     * 4）、取最好的结果作为参考；
+
+第一点：注意哪些虚假移动的步骤，要注意释放内存!!!
+	 
+	 
+	 
+第二点：	 
+最小值最大值算法：
+电脑假走一步，人再假走一步，电脑通过计算人假走一步以后得到的最低分（getMinScore），
+然后在这些最低分中取一个最高分（getMaxScore），作为最后此时的局面分。
+因为很显然，电脑要走的最好那步是 让用户 局面分 最低的那步。
+
+举个例子：
+你和小偷在案发现场撞见,你发现了一个小偷偷东西（假设偷了三个包裹），小偷和你达成一个协议（你和小偷博弈）让你放他走，
+协议是：这三个包裹的东西你都可以看见，一号包：1元、100元，二号包：20元、30元，三号包：5元，60元，然后你选一个包，但是由小偷给你从包里拿东西。
+很明显，你会选择二号包，也很明显，小偷会选择给你那个20元！
+
+也就是说，在各个最小值里面取最大值！——————最小最大值算法由此而来！
+
+图解：
+                                                level（1）：你                                                                |
+                                                                                              --->你肯定要取 “最大值”         |
+             level（2）：赃物包裹1(1,100)            赃物包裹2(20,30)            赃物包裹3(5,60)                              |    该图从下层往上层看      
+                                                                                              --->小偷肯定要给你 “最小值”     |
+             level（3）：   1    100                    20     30                   5     60                                  |
+
+
+			 
+也就是说，电脑在和人博弈时，电脑想走局面分最高的那一步，但是走完这一步以后有可能会让
+用户有更高局面分的选择，所以就要把 下下步用户最低局面分 作为 自己的下步最高局面分。
+详解：
+                                        level（1）：第一局面                                                                  |
+                                                                            --->取 “最大值”（电脑肯定要走局面分高的那步）     |
+             level（2）：第二局面（1）            第二局面（2）          第二局面（3）                                        |    该图从下层往上层看
+                                                                            --->取 “最小值”（人肯定要走各局面中分低的那步）   |
+level（3）：第二局面（1—1，10分）、第二局面（1—2，100分）     第二局面（3—1，20分）第二局面（3—1，30分）                      |
+
+电脑走，假设会出现以下三个局面，在第二局面中，局面分是由分支传上来的，电脑需要在这些局面分中取 “最大值”
+上面电脑走完以后，人走，可能出现以下局面，这就需要在所有子树中求取 “最小值”，作为上层父节点的局面分
+也就是说，在象棋博弈时，假设人也很聪明，当电脑走完以后，人会走让电脑局面分低的那步。
+比如上面图解情况：
+在（1）的子树下1-1和1-2是10分、100分，取10分作为父节点（1）的分数；
+在（3）的子树下3-1和3-2是20分、 30分，取20分作为父节点（3）的分数；
+然后在（1）和（3）中取最大值20分，所以电脑走的是（3）这个分支！也就是说，人你再聪明，电脑还是的20分。
+很简单，如果电脑走（1），那么，人就会走给它10分的那条路，显然，这不是getBestMove！
+
+总而言之就是，电脑走了这步以后，无论玩家怎么选择（肯定选择好的步骤），电脑这步都是好的（相比其他局面而言）。
+
+实现：
+     getMinScore中调用了getMaxScore，getMaxScore中又调用了getMinScore！————间接递归
+     电脑思考的步骤较多，要特别注意SingleGame::click中定时器的设计原因！
+
+	 
+	 
+第三点：
+剪枝优化：将同级的前一分支的结果（curMin、curMax）传到下一分支，以判断是否还需要继续计算比较！
+
+详解：
+                                           level（1）：第一局面
+
+              level（2）：第二局面（1）                               第二局面（2）
+
+level（3）：第二局面（1—1，20分）、第二局面（1—2，30分）       第二局面（3—1，10分）.....
+
+比如上图所示：计算完 level(2)的(1)以后得到的结果是20分，而在计算第二局面(2)的第一分支时得到10，省略号以后的就不再计算，直接删掉此路。
+
+	
+第四点：
+    人工智能优化的方向：后续优化1：给所有的可能的走法排个序；————SingleGame.cpp，53行
+	                    后续优化2：此处使用的是静态局面分，另外此处的局面分是按照自认为的棋子类型的重要性进行划分的；————SingleGame.cpp，138行
+}
+
+
+
+
+
+
+
+
+
+9、网络对战：
+    服务端：
+	    _server = new QTcpServer(this);
+        _server->listen(QHostAddress::Any, 9899);     //监听
+        connect(_server, SIGNAL(newConnection()),this, SLOT(slotNewConnection()));
+    客户端：
+	    _socket = new QTcpSocket(this);
+        _socket->connectToHost(QHostAddress("127.0.0.1"), 9899);    //连接到服务器
+        connect(_socket, SIGNAL(readyRead()),this, SLOT(slotDataArrive()));
+	
+void NetGame::slotDataArrive()
+{
+    QByteArray buf = _socket->readAll();
+    switch (buf.at(0))
+    {
+        case 1:  //首位是1，说明是“先手信息”
+            initFromNetwork(buf);
+            break;
+        case 2:  //首位是2，说明是“点击信息”
+            clickFromNetwork(buf);
+            break;
+        case 3:  //首位是3，说明是“悔棋信息”
+            backFromNetwork(buf);
+            break;
+        default:
+            break;
+    }
+}
+	
+	/*
+     * 报文格式定义
+     * 1.初始化     两个字节
+     * 2.鼠标点击   四个字节
+     * 3.悔棋       一个字节
+     */	
+	 
+	 
+	服务器 把选择的“先手信息”发送给 客户端：
+        //发送三个信息：（1）先手信息；（2）点击信息；（3）悔棋信息
+        //“先手信息”：————两个字节
+        //第一个字节固定是1；
+        //第二个字节是0或者1，1表示接收方走红棋，0表示走黑棋
+        QByteArray buf;
+        buf.append(1);
+        buf.append(bRedSide ? 0 : 1);
+		
+		
+	把“点击的事件”发送给对方
+        //发送三个信息：（1）先手信息；（2）点击信息；（3）悔棋信息
+        //“点击信息”————四个字节
+        //第一个字节固定是2，第二字解是点击的棋子id，第三个字节是row，第四个字节是col
+        QByteArray buf;
+        buf.append(2);
+        buf.append(id);
+        buf.append(row);
+        buf.append(col);

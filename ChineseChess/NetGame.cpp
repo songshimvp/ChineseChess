@@ -94,6 +94,11 @@ void NetGame::clickFromNetwork(QByteArray buf)
     Board::click(buf[1], 9-buf[2], 8-buf[3]);  //因为有棋盘的旋转，甲方点了一个棋子，在对方的棋盘上显示的坐标并不是完全一样的，是需要转化一下的
 }
 
+void NetGame::backFromNetwork(QByteArray)
+{
+    backOne();
+    backOne();
+}
 void NetGame::back()
 {
     if(_bRedTurn != _bSide)
@@ -106,11 +111,6 @@ void NetGame::back()
     QByteArray buf;
     buf.append(3);
     _socket->write(buf);
-}
-void NetGame::backFromNetwork(QByteArray)
-{
-    backOne();
-    backOne();
 }
 
 NetGame::~NetGame()

@@ -23,7 +23,7 @@ public:
 
     /* game status */
     int _selectid;
-    bool _bRedTurn;
+    bool _bRedTurn;           //控制谁走
     void init(bool bRedSide); //初始化，摆棋
 
     /* 绘制draw functions */

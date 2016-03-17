@@ -1,4 +1,6 @@
-﻿#include "SingleGame.h"
+﻿//*************人工智能的基本框架、规则*************//
+
+#include "SingleGame.h"
 #include <QTimer>
 #include <QDebug>
 
@@ -26,12 +28,12 @@ void SingleGame::click(int id, int row, int col)   //在此处是一个虚函数
     {
         Board::click(id, row, col);   //用户还是照常走
 
-        //用户移动完0.1秒以后，电脑再思考
+        //玩家移动完0.1秒以后，电脑再思考
         if(!_bRedTurn)
         {            
             //因为电脑思考还是很慢的（很多步骤！），就会把主进程阻塞！阻塞以后，界面就没法得到响应！
             //启动定时器，在0.01秒后电脑再思考。就是这0.01秒，就可以完成界面的刷新！
-            //可以try一下直接computerMove()是什么效果。
+            //可以try一下直接computerMove()是什么效果（直接卡死，主进程阻塞）。
             QTimer::singleShot(10, this, SLOT(computerMove()));   //槽函数
         }
     }
@@ -39,21 +41,16 @@ void SingleGame::click(int id, int row, int col)   //在此处是一个虚函数
 
 void SingleGame::computerMove()
 {
-    /*
-     * 1、看看有哪些步骤可以走；
-     * 2、试着走一下；
-     * 3、评估走的结果；
-     * 4、取最好的结果作为参考；
-    */
     Step* step = getBestMove();
     moveStone(step->_moveid, step->_killid, step->_rowTo, step->_colTo);
     delete step;
 
-    update();
+    update();    //重绘窗口
 }
 
 
 //后续优化1：给所有的可能的走法排个序
+//获取可能走的所有步骤（Vector<Step*>）
 void SingleGame::getAllPossibleMove(QVector<Step *> &steps)
 {
     //设定min和max以后，既可以得到红棋的可能步骤，也能得到黑棋的可能步骤
@@ -68,18 +65,18 @@ void SingleGame::getAllPossibleMove(QVector<Step *> &steps)
         min = 16, max = 32;
     }
 
-    //遍历所有的棋子，找到那些可能走的棋子
-    for(int i=min;i<max; i++)
+    //遍历己方所有的棋子，找到那些可能走的棋子
+    for(int i=min;i<max; i++)                     //遍历棋子
     {
         if(this->_s[i]._dead)
             continue;//抠掉死棋，不然已经被吃掉的棋子还会继续发挥作用
 
-        for(int row = 0; row<=9; ++row)
+        for(int row = 0; row<=9; ++row)           //再遍历棋盘
         {
             for(int col=0; col<=8; ++col)
             {
                 int killid = this->getStoneId(row, col);
-                if(sameColor(i, killid))
+                if(sameColor(i, killid))    //不能到达相同颜色的棋子位置
                     continue;
 
                 if(canMove(i, killid, row, col))
@@ -117,8 +114,8 @@ Step* SingleGame::getBestMove()
         if(minScore > maxInAllMinScore)
         {
             if(ret) delete ret;
-
             ret = step;
+
             maxInAllMinScore = minScore;
         }
         else
@@ -132,7 +129,7 @@ Step* SingleGame::getBestMove()
 
 
 //后续优化2：此处使用的是静态局面分，另外此处的局面分是按照自认为的棋子类型的重要性进行划分的
-//试着走一步以后，就要评价局面分：——这一步是最复杂的
+//试着走一步以后，就要评价局面分：————这一步是最复杂的
 //计算局面分————黑棋（电脑）作为主角
 int SingleGame::calcScore()
 {
@@ -188,8 +185,17 @@ level（3）：第二局面（1—1，10分）、第二局面（1—2，100分�
 */
 /*
 剪枝优化：将同级的前一分支的结果（curMin、curMax）传到下一分支，以判断是否还需要继续计算比较！
-比如上例：计算完level（2）的（1）以后得到的结果是10分，所以在计算level（2）的（3）的第一分支时得到20，以后就不再计算，直接删掉此路。
+
+详解：
+                                        level（1）：第一局面
+
+              level（2）：第二局面（1）                               第二局面（2）
+
+level（3）：第二局面（1—1，20分）、第二局面（1—2，30分）       第二局面（3—1，10分）.....
+
+比如上图所示：计算完 level(2)的(1)以后得到的结果是20分，而在计算第二局面(2)的第一分支时得到10，省略号以后的就不再计算，直接删掉此路。
  */
+//getMinScore中调用了getMaxScore，getMaxScore中又调用了getMinScore！————间接递归
 int SingleGame::getMinScore(int level, int curMin)
 {
     if(level == 0)
@@ -198,11 +204,11 @@ int SingleGame::getMinScore(int level, int curMin)
     QVector<Step*> steps;
     getAllPossibleMove(steps);   //红棋的getAllPossibleMove
 
-    int minInAllMaxScore = 300000;
+    int minInAllMaxScore = 300000;   //要足够大
 
     while(steps.count())
     {
-        Step* step = steps.last();
+        Step* step = steps.back();
         steps.removeLast();
 
         fakeMove(step);
@@ -210,6 +216,7 @@ int SingleGame::getMinScore(int level, int curMin)
         int maxScore = getMaxScore(level-1, minInAllMaxScore);//getMinScore调用getMaxScoreget——间接递归
         unfakeMove(step);
         delete step;
+
 
         //剪枝优化
         if(maxScore <= curMin)    //添加 = 以后的提升程序的效率！原因：在象棋博弈的时候，很少有吃棋的动作，基本上都是走棋！所以局面分相等的情况很多！
@@ -223,6 +230,7 @@ int SingleGame::getMinScore(int level, int curMin)
 
             return maxScore;      //当在下层后面分支（分支的分支）出现更小的值时（必然不可能走），直接return！后面的分支不用再计算，提高速度！
         }
+
 
         if(maxScore < minInAllMaxScore)
         {
@@ -253,6 +261,7 @@ int SingleGame::getMaxScore(int level, int curMax)  //level控制间接递归的
         unfakeMove(step);
         delete step;
 
+
         //剪枝优化
         if(minScore >= curMax)   //添加 = 以后的提升程序的效率!原因：在象棋博弈的时候，很少有吃棋的动作，基本上都是走棋！所以局面分相等的情况很多！
         {
@@ -265,6 +274,7 @@ int SingleGame::getMaxScore(int level, int curMax)  //level控制间接递归的
 
             return minScore;     //当后面分支出现较大值时（必然不可能走），直接return！后面的分支不用再计算，提高速度！
         }
+
 
         if(minScore > maxInAllMinScore)
         {
@@ -291,6 +301,7 @@ void SingleGame::back()
 {
     if(_bRedTurn)
     {
+        //调用两次backone()
         backOne();
         backOne();
     }
